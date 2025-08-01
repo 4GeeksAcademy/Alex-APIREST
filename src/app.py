@@ -9,14 +9,15 @@ from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Character, Planet, Favorite
-#from models import Person
+# from models import Person
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace("postgres://", "postgresql://")
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace(
+        "postgres://", "postgresql://")
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:////tmp/test.db"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -27,14 +28,19 @@ CORS(app)
 setup_admin(app)
 
 # Handle/serialize errors like a JSON object
+
+
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
 # generate sitemap with all your endpoints
+
+
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
+
 
 @app.route('/user', methods=['GET'])
 def handle_hello():
@@ -48,39 +54,96 @@ def handle_hello():
 # --- API endpoints ---
 
 # People endpoints
+
+
 @app.route('/people', methods=['GET'])
 def get_people():
     people = Character.query.all()
     return jsonify([p.serialize() for p in people]), 200
 
+
 @app.route('/people/<int:people_id>', methods=['GET'])
 def get_person(people_id):
+    # validar que el id no sea negativo o 0
+    if people_id <= 0:
+        return jsonify({"msg": "Invalid person ID"}), 400
+
     person = Character.query.get(people_id)
     if person is None:
         return jsonify({"msg": "Person not found"}), 404
     return jsonify(person.serialize()), 200
 
 # Planets endpoints
+
+
 @app.route('/planets', methods=['GET'])
 def get_planets():
     planets = Planet.query.all()
     return jsonify([p.serialize() for p in planets]), 200
 
+
 @app.route('/planets/<int:planet_id>', methods=['GET'])
 def get_planet(planet_id):
+    # validar que el id de planet no sea negativo ni 0
+    if planet_id <= 0:
+        return jsonify({"msg": "Invalid planet ID"}), 400
+
     planet = Planet.query.get(planet_id)
     if planet is None:
         return jsonify({"msg": "Planet not found"}), 404
     return jsonify(planet.serialize()), 200
 
+
+@app.route('/people', methods=['POST'])
+def create_person():
+    data = request.get_json()
+
+    if not data or "name" not in data:
+        return jsonify({"msg": "Missing required fields"}), 400
+
+    new_person = Character(
+        name=data["name"],
+        gender=data.get("gender"),
+        birth_year=data.get("birth_year"),
+        eye_color=data.get("eye_color"),
+        skin_color=data.get("skin_color")
+    )
+    db.session.add(new_person)
+    db.session.commit()
+
+    return jsonify({"msg": "Person created", "person_id": new_person.id}), 201
+
+
+@app.route('/planets', methods=['POST'])
+def create_planet():
+    data = request.get_json()
+
+    if not data or "name" not in data:
+        return jsonify({"msg": "Missing required fields"}), 400
+
+    new_planet = Planet(
+        name=data["name"],
+        climate=data.get("climate"),
+        terrain=data.get("terrain"),
+        population=data.get("population")
+    )
+    db.session.add(new_planet)
+    db.session.commit()
+
+    return jsonify({"msg": "Planet created", "planet_id": new_planet.id}), 201
+
 # Users endpoints
+
+
 @app.route('/users', methods=['GET'])
 def get_users():
     users = User.query.all()
     return jsonify([u.serialize() for u in users]), 200
 
+
 # Simulación de usuario autenticado
 CURRENT_USER_ID = 1
+
 
 @app.route('/users/favorites', methods=['GET'])
 def get_user_favorites():
@@ -88,13 +151,20 @@ def get_user_favorites():
     return jsonify([fav.serialize() for fav in favorites]), 200
 
 # Añadir favorito planeta
+
+
 @app.route('/favorite/planet/<int:planet_id>', methods=['POST'])
 def add_favorite_planet(planet_id):
+    # para validar si el id no sea NONE, 0 o negativo
+    if planet_id <= 0:
+        return jsonify({"msg": "Invalid planet ID"}), 400
+
     planet = Planet.query.get(planet_id)
     if not planet:
         return jsonify({"msg": "Planet not found"}), 404
 
-    existing = Favorite.query.filter_by(user_id=CURRENT_USER_ID, planet_id=planet_id).first()
+    existing = Favorite.query.filter_by(
+        user_id=CURRENT_USER_ID, planet_id=planet_id).first()
     if existing:
         return jsonify({"msg": "Favorite already exists"}), 400
 
@@ -104,13 +174,20 @@ def add_favorite_planet(planet_id):
     return jsonify({"msg": "Favorite planet added"}), 201
 
 # Añadir favorito persona
+
+
 @app.route('/favorite/people/<int:people_id>', methods=['POST'])
 def add_favorite_person(people_id):
+    # validar id de persona
+    if people_id <= 0:
+        return jsonify({"msg": "Invalid person ID"}), 400
+
     character = Character.query.get(people_id)
     if not character:
         return jsonify({"msg": "Person not found"}), 404
 
-    existing = Favorite.query.filter_by(user_id=CURRENT_USER_ID, character_id=people_id).first()
+    existing = Favorite.query.filter_by(
+        user_id=CURRENT_USER_ID, character_id=people_id).first()
     if existing:
         return jsonify({"msg": "Favorite already exists"}), 400
 
@@ -120,9 +197,15 @@ def add_favorite_person(people_id):
     return jsonify({"msg": "Favorite person added"}), 201
 
 # Eliminar favorito planeta
+
+
 @app.route('/favorite/planet/<int:planet_id>', methods=['DELETE'])
 def delete_favorite_planet(planet_id):
-    fav = Favorite.query.filter_by(user_id=CURRENT_USER_ID, planet_id=planet_id).first()
+    if planet_id <= 0:
+        return jsonify({"msg": "Invalid planet ID"}), 400
+
+    fav = Favorite.query.filter_by(
+        user_id=CURRENT_USER_ID, planet_id=planet_id).first()
     if not fav:
         return jsonify({"msg": "Favorite not found"}), 404
     db.session.delete(fav)
@@ -130,9 +213,15 @@ def delete_favorite_planet(planet_id):
     return jsonify({"msg": "Favorite planet removed"}), 200
 
 # Eliminar favorito persona
+
+
 @app.route('/favorite/people/<int:people_id>', methods=['DELETE'])
 def delete_favorite_person(people_id):
-    fav = Favorite.query.filter_by(user_id=CURRENT_USER_ID, character_id=people_id).first()
+    if people_id <= 0:
+        return jsonify({"msg": "Invalid person ID"}), 400
+
+    fav = Favorite.query.filter_by(
+        user_id=CURRENT_USER_ID, character_id=people_id).first()
     if not fav:
         return jsonify({"msg": "Favorite not found"}), 404
     db.session.delete(fav)
@@ -144,4 +233,3 @@ def delete_favorite_person(people_id):
 if __name__ == '__main__':
     PORT = int(os.environ.get('PORT', 3000))
     app.run(host='0.0.0.0', port=PORT, debug=False)
-
